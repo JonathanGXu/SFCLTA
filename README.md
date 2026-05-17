@@ -1,7 +1,7 @@
 # SFCLTA: Spectral Fusion Contrastive Learning with Topology-Adaptive Graph Augmentation
 
 
-Run
+### Quick Start!
 
 python main.py --dataset=Cora
 
