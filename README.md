@@ -7,3 +7,7 @@
 ### Quick Start!
 
 python main.py --dataset=Cora
+
+### Cite Our Paper
+
+    
