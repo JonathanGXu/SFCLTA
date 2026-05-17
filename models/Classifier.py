@@ -1,14 +1,3 @@
-#!/usr/bin/env python
-# -*- coding: UTF-8 -*-
-'''
-@Project ：HGAE-SGC 
-@File    ：Classifier.py
-@IDE     ：PyCharm 
-@Author  ：Zhuo
-@Date    ：2025/4/15 13:03 
-'''
-
-
 import torch
 import torch.nn as nn
 

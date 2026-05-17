@@ -1,31 +1,25 @@
 
 import os
-import wandb
 from tqdm import tqdm
-import torch
 import argparse
 import torch
 import numpy as np
-import torch_geometric
 import torch.nn as nn
 import torch.optim as optim
-from torch_geometric.data import DataLoader
 from sklearn.model_selection import KFold
-from torch_geometric.utils import to_undirected, add_self_loops
-from torch_sparse import SparseTensor
+from torch_geometric.utils import to_undirected
 
-from Datasets.dataset import init_dataset,print_dataset
+from Datasets.dataset import init_dataset
 from models.DGI import DGI
 from models.deepGNN import DeepGNN
-from models.VGAE import VGAE
-from models.HGAE import EncoderLayer,HGAE, Heter_GCN
+from models.VGAE import VGAE,VGAE_torch
+from models.HGAE import EncoderLayer,HGAE, Heter_GCN,ESGNN
 
 from models.Classifier import Classifier
 from sklearn import svm
 from sklearn.metrics import f1_score
 
-os.environ["WANDB_API_KEY"] = '0d8f50ecdd1ac7dbdbe2c9501e00e804b01bb800'
-os.environ["WANDB_MODE"] = "offline"
+
 def get_argparse():
     parser = argparse.ArgumentParser(description='GNNs.')
 
@@ -34,7 +28,7 @@ def get_argparse():
                         help="[ node_cls ] or [ graph_cls ]")
     parser.add_argument("--dataset",
                         default="Computers",
-                        help="[ Cora, CiteSeer, PubMed, Reddit, Computers, Photo, PPI ]")
+                        help="[ Cora, CiteSeer, PubMed, Reddit, Computers, Photo, PPI, Roman, Ratings ]")
     parser.add_argument("--dataset_path",
                         default="./Datasets/",
                         help="Dataset Path. (e.g. ./Datasets/")
@@ -44,7 +38,7 @@ def get_argparse():
 
     parser.add_argument("--model_name",
                         default="Heter_GCN",
-                        help="supervised: [ GCN, GAT ]; unsupervised: [ VGAE, DGI, GraphMAE, Heter_GCN... ]; Ours:CLA，Heter_GCN")
+                        help="supervised: [ GCN, GAT ]; unsupervised: [ VGAE, DGI, GraphMAE, Heter_GCN, VGAE_Pyro ]; Ours:CLA，Heter_GCN, ESGNN")
     parser.add_argument("--print_model",type=bool,
                         default=False,
                         help="Print Details of Model or not.")
@@ -52,7 +46,7 @@ def get_argparse():
                         default=5,
                         help="K-Fold Cross Validation Params.")
     parser.add_argument("--augmentation_ratio",
-                        default=0.01,
+                        default=0.1,
                         type=float,
                         help="Augmentation Ratio belongs to [0,1]. 0 is no augmentation.")
 
@@ -64,9 +58,9 @@ def get_argparse():
 
     parser.add_argument("--num_layers",default=3,type=int,
                         help="Number of gnn layers in model.")
-    parser.add_argument("--hidden_dim", default=256, type=int,
+    parser.add_argument("--hidden_dim", default=128, type=int,
                         help="The hidden dim of graph representation.")
-    parser.add_argument("--output_dim",default=512,type=int,
+    parser.add_argument("--output_dim",default=128,type=int,
                         help="The output dim of graph representation.")
     parser.add_argument('--assign_ratio',default=0.25,type=float,
                         help="The ratio of assignment.")
@@ -130,9 +124,9 @@ def run_supervised(args):
 
 def run_unsupervised(args):
     print("Beginning unsupervised learning...")
-    features, adj, labels, idx_train, idx_val, idx_test,output_cls = init_dataset(dataset_name=args.dataset,
+    features, adj, labels, idx_train, idx_val, idx_test,output_cls,dataset = init_dataset(dataset_name=args.dataset,
                                                     supervised=False,device=args.device,print_data=args.print_data)
-
+    data = dataset[0]
     input_dim = features.shape[-1]
     if args.model_name == "VGAE":
         model = VGAE(input_dim=input_dim,hidden_dim=args.hidden_dim,output_dim=args.output_dim,dropout=args.dropout)
@@ -143,6 +137,9 @@ def run_unsupervised(args):
     elif args.model_name == "CLA":
         model = EncoderLayer(input_dim=input_dim,layer_num=1,hidden_dims=[args.output_dim],dropout=args.dropout)
 
+    elif args.model_name == "Heter_GCN":
+        model =   Heter_GCN(input_dim=input_dim,hidden_dim=args.output_dim,data_aug=args.augmentation_ratio,
+                            data_aug_source=data,dropout=args.dropout,device=args.device)
     else:
         raise NotImplementedError
 
@@ -150,6 +147,7 @@ def run_unsupervised(args):
 
     model.to(device=args.device)
 
+    print("======Train !!======")
     #Train
     for epoch in tqdm(range(args.epochs)):
         model.train()
@@ -206,25 +204,17 @@ def run_unsupervised(args):
         logits = log(test_embs)
         preds = torch.argmax(logits, dim=1)
         acc = torch.sum(preds == test_lbls).float() / test_lbls.shape[0]
-        accs.append(acc * 100)
-        print("Acc {}".format(acc))
+        accs.append(acc.cpu())
+        # print("Acc {}".format(acc))
         tot += acc.cpu()
+    std = np.std(accs)
+    mean_acc= np.mean(accs)
+    print("Acc {}".format(mean_acc))
+    print("Std {}".format(std))
 
 def run_KFold_unsupervised(args):
 
-    wandb.init(
-        # Set the wandb entity where your project will be logged (generally your team name).
-        entity="zhuoxu",
-        # Set the wandb project where this run will be logged.
-        project="HGAE",
-        # Track hyperparameters and run metadata.
-        config={
-            "learning_rate": args.learning_rate,
-            "architecture": args.model_name,
-            "dataset": args.dataset,
-            "epochs": args.epochs,
-        },
-    )
+
 
     print("Beginning {}-Fold cross validation unsupervised learning...".format(args.k_folds))
 
@@ -262,6 +252,12 @@ def run_KFold_unsupervised(args):
     elif args.model_name == "Heter_GCN":
         model =   Heter_GCN(input_dim=input_dim,hidden_dim=args.output_dim,data_aug=args.augmentation_ratio,
                             data_aug_source=data,dropout=args.dropout,device=args.device)
+    elif args.model_name == "VGAE_torch":
+        model = VGAE_torch(input_dim=input_dim,hidden_dim=args.hidden_dim,
+                           dropout=args.dropout,device=args.device)
+    elif args.model_name == "ESGNN":
+        model = ESGNN(input_dim=input_dim,hidden_dim=args.hidden_dim,
+                      data_aug=args.augmentation_ratio,data_aug_source=[data.x,edge_index])
 
     else:
         raise NotImplementedError
@@ -270,6 +266,7 @@ def run_KFold_unsupervised(args):
 
     model.to(device=args.device)
 
+    print("======Train !!======")
     for epoch in tqdm(range(args.epochs)):
         model.train()
         optimizer.zero_grad()
@@ -279,9 +276,11 @@ def run_KFold_unsupervised(args):
         # DGI (pred=pred,real=None)
         loss = model.recon_loss(pred=pred, real=None)
 
-        wandb.log({"loss": loss})
+
 
         loss.backward()
+
+
         optimizer.step()
 
     print("Training is OK.")
@@ -328,7 +327,7 @@ def run_KFold_unsupervised(args):
           'acc=%.4f' % accs,
           'std=%.4f'%std)
 
-    wandb.log({"F1_micro": f1_mic, "F1_macro": f1_mac, "Acc":accs, "Std":std})
+
 def accuracy(preds, labels):
     correct = (preds == labels).astype(float)
     correct = correct.sum()
@@ -339,24 +338,14 @@ def run_model():
     if args.dataset in ["Cora","CiteSeer","PubMed"] and args.model_name in ["GCN", "GAT"]:
         run_supervised(args)
 
-    # elif args.dataset in ["Cora","CiteSeer","PubMed"]:
-    #     run_unsupervised(args)
+    elif args.dataset in ["Cora","CiteSeer","PubMed"]:
+        run_unsupervised(args)
 
     else:
         run_KFold_unsupervised(args)
 
-# def check_data():
-#     print("Checking data...")
-#     args = get_argparse()
-#
-#     dataset = init_dataset(dataset_name=args.dataset)
-#     if args.print_data == True:
-#         print_dataset(dataset)
 
 
-
-
-# Press the green button in the gutter to run the script.
 if __name__ == '__main__':
     print("OK!")
     run_model()

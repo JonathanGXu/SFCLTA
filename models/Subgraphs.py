@@ -1,13 +1,3 @@
-#!/usr/bin/env python
-# -*- coding: UTF-8 -*-
-'''
-@Project ：HGAE-SGC 
-@File    ：Subgraphs.py
-@IDE     ：PyCharm 
-@Author  ：Zhuo
-@Date    ：2025/3/5 15:05 
-'''
-
 import networkx as nx
 from torch_geometric.utils.convert import to_networkx,from_networkx
 import torch
@@ -24,57 +14,31 @@ from torch_geometric.utils import (
     remove_self_loops,
     to_undirected,
 )
-# split the graph into sungraph
-def split_subgraphs(x,adj,subgraph_num):
-    """
-    split the graph into several subgraphs according to curvatures
-    :param x: the node feature matrix [batch_size, node_size, feature_dim]
-    :param adj: adjacency matrix [batch_size, node_size, node_size]
-    :param subgraph_num: generated subgraph number
-    :return:
-    """
 
 
 def RiciCurv(data, max_iterations=10, remove_edges=True, remove_bound=0.5, tau=1.0, undirected=True,service="cuda"):
-    """
 
-    :param data:
-    :param max_iterations:
-    :param remove_edges:
-    :param remove_bound:
-    :param tau:
-    :param undirected:
-    :param service:
-    :return:
-    """
-    # 1. 将torch_geometric.data.Data实例转化为networkx.DiGraph实例，方便后续加边、减边操作
     G = to_networkx(data)
     if undirected:
         G = G.to_undirected()
 
-    # 2. 获取图信息（邻接矩阵，边的个数）
     edge_index = data.edge_index
     if undirected:
         edge_index = edge_index.to_undirected()
     A = torch.Tensor(nx.adjacency_matrix(G).todense()).to(service)
-    # A = to_dense_adj(remove_self_loops(edge_index)[0])[0]  # 邻接矩阵
-    # A = A.cuda()
-    N = A.shape[0]  # 边的个数
+    N = A.shape[0]
 
-    C = torch.zeros(N, N).cuda()  # 初始化Ricci曲率矩阵，即Ric(i, j)
+    C = torch.zeros(N, N).cuda()
 
-    # 3. 进入图的加边、减边循环过程，其中max_iterations为最大迭代次数
     for x in range(max_iterations):
         can_add = True
 
-        # 3.1 根据BFC算法更新Ricci曲率矩阵
         balanced_forman_curvature(A, C=C)
 
         ix_min = C.argmin().item()
         x = ix_min // N
         y = ix_min % N
 
-        # 3.2 计算可加边的候选集candidates
         if undirected:
             x_neighbors = list(G.neighbors(x)) + [x]
             y_neighbors = list(G.neighbors(y)) + [y]
@@ -87,7 +51,6 @@ def RiciCurv(data, max_iterations=10, remove_edges=True, remove_bound=0.5, tau=1
                 if (i != j) and (not G.has_edge(i, j)):
                     candidates.append((i, j))
 
-        # 3.3 根据边添加之后对Ricci曲率的提升程度，从候选集中选择边k~l进行添加
         if len(candidates):
             D = balanced_forman_post_delta(A, x, y, x_neighbors, y_neighbors)
             improvements = []
@@ -105,13 +68,12 @@ def RiciCurv(data, max_iterations=10, remove_edges=True, remove_bound=0.5, tau=1
             if not remove_edges:
                 break
 
-        # 3.4 移除具有最大Ricci曲率的边，其中remove_bound为曲率最大上界
         if remove_edges:
             ix_max = C.argmax().item()
             x = ix_max // N
             y = ix_max % N
             if C[x, y] > remove_bound:
-                G.remove_edge(x, y)  # 移除边
+                G.remove_edge(x, y)
                 if undirected:
                     A[x, y] = A[y, x] = 0
                 else:
@@ -120,17 +82,10 @@ def RiciCurv(data, max_iterations=10, remove_edges=True, remove_bound=0.5, tau=1
                 if can_add is False:
                     break
 
-    # 4. 将networkx.DiGraph实例转化为torch_geometric.data.Data实例，返回
     return from_networkx(G)
 
 
 def balanced_forman_curvature(A,C):
-    """
-
-    :param A: adjacency matrix [num_nodes, num_nodes] torch.Tensor
-    :param C:
-    :return:
-    """
 
     N = A.shape[0]
     A2 = torch.matmul(A, A)
@@ -187,7 +142,6 @@ def _balanced_forman_curvature(A, A2, d_in, d_out, N, C):
         if lambda_ij > 0:
             C[i, j] += sharp_ij / (d_max * lambda_ij)
 
-# def balanced_forman_post_delta(A,)
 
 def balanced_forman_post_delta(A, x, y, i_neighbors, j_neighbors, D=None):
     N = A.shape[0]
@@ -234,7 +188,6 @@ def _balanced_forman_post_delta(
             D[I, J] = -1000
             return
 
-        # Difference in degree terms
         if j == x:
             d_in_x += 1
         elif i == y:
@@ -251,14 +204,12 @@ def _balanced_forman_post_delta(
             d_max = d_out_y
             d_min = d_in_x
 
-        # Difference in triangles term
         A2_x_y = A2[x, y]
         if (x == i) and (A[j, y] != 0):
             A2_x_y += A[j, y]
         elif (y == j) and (A[x, i] != 0):
             A2_x_y += A[x, i]
 
-        # Difference in four-cycles term
         sharp_ij = 0
         lambda_ij = 0
         for z in range(N):

@@ -1,19 +1,8 @@
-#!/usr/bin/env python
-# -*- coding: UTF-8 -*-
-'''
-@Project ：HGAE-SGC 
-@File    ：utils.py
-@IDE     ：PyCharm 
-@Author  ：Zhuo
-@Date    ：2025/4/9 16:08 
-'''
-
 import torch
 import numpy as np
 import networkx as nx
 import matplotlib.pyplot as plt
 
-from torch_geometric.utils import to_networkx
 
 def softmax(x):
     exps = np.exp(x - np.max(x))
@@ -36,6 +25,3 @@ def visualize(h, color, epoch=None, loss=None, accuracy=None):
         nx.draw_networkx(h, pos=nx.spring_layout(h, seed=42), with_labels=False,
                          node_color=color, cmap="Set2")
     plt.show()
-
-# G = to_networkx(data, to_undirected=True)
-# visualize(G, color=data.y)

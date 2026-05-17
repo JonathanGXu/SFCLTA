@@ -1,13 +1,3 @@
-#!/usr/bin/env python
-# -*- coding: UTF-8 -*-
-'''
-@Project ：HGAE-SGC 
-@File    ：deepGNN.py
-@IDE     ：PyCharm 
-@Author  ：Zhuo
-@Date    ：2025/4/11 20:52 
-'''
-
 import torch
 import torch.nn as nn
 import torch.nn.functional as F

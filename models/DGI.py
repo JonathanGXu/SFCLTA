@@ -1,13 +1,3 @@
-#!/usr/bin/env python
-# -*- coding: UTF-8 -*-
-'''
-@Project ：HGAE-SGC 
-@File    ：DGI.py
-@IDE     ：PyCharm 
-@Author  ：Zhuo
-@Date    ：2025/4/16 21:29 
-'''
-
 import torch
 import torch.nn as nn
 import numpy as np

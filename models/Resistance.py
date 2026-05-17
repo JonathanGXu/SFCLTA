@@ -1,13 +1,3 @@
-#!/usr/bin/env python
-# -*- coding: UTF-8 -*-
-'''
-@Project ：HGAE-SGC 
-@File    ：Resistance.py
-@IDE     ：PyCharm 
-@Author  ：Zhuo
-@Date    ：2025/4/9 17:16 
-'''
-
 import math
 import torch
 import numpy as np
